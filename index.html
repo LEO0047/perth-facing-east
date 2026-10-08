@@ -980,8 +980,9 @@ addEventListener('pointermove', ev => {
 /* ================= frame loop ================= */
 let last = performance.now(), frames = 0, slow = 0, tStart = performance.now(), lastRim = '';
 function frame(now) {
-  const dt = Math.min(0.1, (now - last) / 1000); last = now;
-  const tsec = (now - tStart) / 1000;
+  // The first animation timestamp can precede setup's performance.now().
+  const dt = Math.max(0, Math.min(0.1, (now - last) / 1000)); last = now;
+  const tsec = Math.max(0, (now - tStart) / 1000);
   let m;
   if (intro) { m = introM(now - intro.t0); displayM = m; }
   if (!intro) { const target = scrollToM(); displayM += (target - displayM) * (reduce ? 1 : 1 - Math.exp(-dt * 4.5)); m = displayM; }
