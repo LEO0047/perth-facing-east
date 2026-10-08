@@ -1,0 +1,1033 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="A scroll-driven Perth sunset seen from Kings Park, with the sun behind you: Kings Park's shadow climbs the towers, the Earth's shadow rises over the Darling Scarp, and the city lights take over.">
+<meta name="theme-color" content="#070912">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23283E68'/%3E%3Crect y='26' width='64' height='10' fill='%23E59DB8'/%3E%3Crect y='36' width='64' height='6' fill='%23626D95'/%3E%3Crect y='42' width='64' height='22' fill='%231D2131'/%3E%3C/svg%3E">
+<title>Facing East</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap">
+<style>
+[hidden] { display: none !important; }
+/* Layout: a fixed live view east from Kings Park (WebGL) over a tall scroll track; scroll = minutes relative to tonight's sunset.
+   The sun is behind the viewer: the city is lit head-on, then Kings Park's shadow climbs it, then the Earth's shadow rises over the scarp. */
+:root {
+  --night: #070912;
+  --ink: #12182A;
+  --paper: #F5F0EC;
+  --paper-dim: rgba(245, 240, 236, 0.72);
+  --venus: #E59DB8;          /* Belt of Venus pink, also the night neon */
+  --led: #EAF2FF;
+  --rim: rgba(255, 210, 190, 0.35);
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --text: "Newsreader", "Iowan Old Style", Georgia, serif;
+  --gutter: clamp(16px, 4vw, 56px);
+  color-scheme: dark;
+}
+html { background: var(--night); }
+body {
+  background: var(--night);
+  color: var(--paper);
+  font-family: var(--text);
+  margin: 0;
+  padding-inline: 16px;
+  padding-block: 0;
+  overflow-x: hidden;
+}
+#scene, #fallback { position: fixed; inset: 0; width: 100%; height: 100%; display: block; z-index: 0; }
+#fallback { background: linear-gradient(180deg, #283E68 0%, #8C8FB4 34%, #E59DB8 44%, #626D95 50%, #1D2131 51%, #0E111E 100%); }
+#track { height: 900vh; position: relative; z-index: 1; pointer-events: none; }
+
+.mast { position: fixed; z-index: 3; top: calc(env(safe-area-inset-top, 0px) + clamp(14px, 3.4vh, 40px)); left: var(--gutter); right: var(--gutter); pointer-events: none; }
+.title {
+  --w: 820; --wd: 125;
+  margin: 0;
+  font-family: var(--display);
+  font-variation-settings: "wdth" var(--wd), "wght" var(--w);
+  font-weight: 800;
+  font-size: clamp(44px, 7.6vw, 128px);
+  line-height: 0.86;
+  letter-spacing: -0.01em;
+  color: rgba(18, 24, 42, 0.92);
+  white-space: nowrap;
+}
+.where { margin: 0.6em 0 0 0.1em; font-style: italic; font-size: clamp(14px, 1.15vw, 17px); color: var(--paper-dim); text-shadow: 0 1px 12px rgba(0, 0, 0, 0.35); }
+
+.glass {
+  position: relative;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.02) 55%), rgba(14, 16, 32, 0.30);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  backdrop-filter: blur(18px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-top-color: var(--rim);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), inset 0 -1px 0 rgba(0, 0, 0, 0.22);
+}
+.glass::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: radial-gradient(260px circle at var(--mx, 20%) var(--my, -10%), rgba(255, 255, 255, 0.14), transparent 62%); }
+
+.readout { position: fixed; z-index: 3; top: calc(env(safe-area-inset-top, 0px) + clamp(14px, 3.4vh, 40px)); right: var(--gutter); border-radius: 16px; padding: 12px 16px 13px; min-width: 12.5rem; pointer-events: none; }
+.clock { font-family: var(--display); font-variation-settings: "wdth" 112, "wght" 520; font-size: clamp(28px, 2.5vw, 40px); line-height: 1; font-variant-numeric: tabular-nums; }
+.rel, .alt { font-size: 15px; line-height: 1.35; color: var(--paper-dim); font-variant-numeric: tabular-nums; }
+.rel { margin-top: 6px; color: var(--paper); }
+
+.rail { position: fixed; z-index: 3; right: var(--gutter); top: 24vh; bottom: 50vh; width: 1px; }
+.rail-line { position: absolute; inset: 0 auto 0 0; width: 1px; background: linear-gradient(180deg, rgba(255, 228, 200, 0.55), rgba(229, 157, 184, 0.45), rgba(234, 242, 255, 0.35)); }
+.rail-dot { position: absolute; left: -5px; width: 11px; height: 11px; margin-top: -5.5px; border-radius: 50%; top: 0; background: #FFE6D6; box-shadow: 0 0 0 3px rgba(255, 230, 214, 0.18), 0 0 14px 2px rgba(229, 157, 184, 0.7); }
+.mark { position: absolute; right: -6px; margin-top: -0.75em; display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 4px 0; cursor: pointer; color: var(--paper-dim); font: inherit; font-size: 13.5px; line-height: 1.2; text-align: right; pointer-events: auto; white-space: nowrap; text-shadow: 0 1px 10px rgba(0, 0, 0, 0.55); }
+.mark span.t { font-family: var(--display); font-variation-settings: "wdth" 110, "wght" 480; font-size: 14.5px; color: var(--paper); font-variant-numeric: tabular-nums; }
+.mark i { display: block; width: 13px; height: 1px; background: rgba(255, 245, 235, 0.75); }
+.mark:hover, .mark:focus-visible { color: var(--paper); }
+.mark:focus-visible, .btn:focus-visible, .pill:focus-visible { outline: 2px solid var(--led); outline-offset: 3px; border-radius: 6px; }
+
+.caption { position: fixed; z-index: 3; left: var(--gutter); bottom: calc(env(safe-area-inset-bottom, 0px) + clamp(16px, 5vh, 52px)); width: min(31rem, calc(100vw - 32px)); border-radius: 22px; padding: 18px 22px 20px; transition: opacity 260ms ease, filter 260ms ease, transform 260ms ease; }
+.caption.swap { opacity: 0; filter: blur(6px); transform: translateY(4px); }
+.caption p { margin: 0; font-size: clamp(17px, 1.32vw, 20px); line-height: 1.5; font-variation-settings: "opsz" 18; text-wrap: pretty; }
+.caption .foot { margin-top: 12px; font-size: 14px; line-height: 1.5; color: var(--paper-dim); }
+.caption .done { font-family: var(--display); font-variation-settings: "wdth" 118, "wght" 300; font-size: 32px; line-height: 1; margin-bottom: 10px; }
+.btn { margin-top: 16px; font: inherit; font-size: 15px; color: var(--paper); padding: 9px 16px; border-radius: 999px; cursor: pointer; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.28); }
+.btn:hover { background: rgba(255, 255, 255, 0.16); }
+
+/* intro: the glare of sun on glass, burning off */
+.glare {
+  position: fixed; inset: 0; z-index: 2; pointer-events: none; --clear: 0%;
+  -webkit-backdrop-filter: blur(22px) brightness(1.5) saturate(1.35);
+  backdrop-filter: blur(22px) brightness(1.5) saturate(1.35);
+  background: radial-gradient(110% 80% at 34% 52%, rgba(255, 226, 180, 0.42), rgba(255, 196, 150, 0.18));
+  -webkit-mask-image: radial-gradient(circle at 34% 52%, transparent var(--clear), #000 calc(var(--clear) + 20%));
+  mask-image: radial-gradient(circle at 34% 52%, transparent var(--clear), #000 calc(var(--clear) + 20%));
+}
+.pill { position: fixed; z-index: 4; right: var(--gutter); bottom: calc(env(safe-area-inset-bottom, 0px) + clamp(16px, 5vh, 52px)); border-radius: 999px; padding: 10px 18px; font: inherit; font-size: 15px; color: var(--paper); cursor: pointer; transition: opacity 400ms ease; }
+.pill.quiet { opacity: 0; pointer-events: none; }
+p.pill { margin: 0; cursor: default; pointer-events: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+@media (max-width: 760px) {
+  .readout { min-width: 0; padding: 10px 13px 11px; }
+  .alt { display: none; }
+  .rel { font-size: 13.5px; }
+  .mast { right: auto; }
+  .where { max-width: 15em; }
+  .rail { top: 30vh; bottom: 52vh; }
+  .mark .l, .mark span.t { display: none; }
+  .pill { bottom: auto; top: calc(env(safe-area-inset-top, 0px) + 150px); }
+}
+@media (max-width: 420px) {
+  .readout { top: calc(env(safe-area-inset-top, 0px) + 96px); }
+  .pill { top: calc(env(safe-area-inset-top, 0px) + 196px); }
+}
+@media (prefers-reduced-motion: reduce) { .caption, .pill { transition: none; } }
+</style>
+</head>
+<body>
+<canvas id="scene" aria-hidden="true"></canvas>
+<div id="fallback" hidden></div>
+<div class="glare" id="glare" aria-hidden="true"></div>
+
+<header class="mast">
+  <h1 class="title" id="title">Facing East</h1>
+  <p class="where" id="where">Perth, from Kings Park</p>
+</header>
+
+<aside class="readout glass" aria-label="Time and sun position">
+  <div class="clock" id="clock">6:23 PM</div>
+  <div class="rel" id="rel">Sunset</div>
+  <div class="alt" id="alt">Sun touching the horizon</div>
+</aside>
+
+<nav class="rail" id="rail" aria-label="Tonight's light, in order">
+  <div class="rail-line"></div>
+  <div class="rail-dot" id="railDot"></div>
+</nav>
+
+<section class="caption glass" id="caption" aria-hidden="true">
+  <div id="capBody"><p>Forty-five minutes before sunset on Kaarta Gar-up, the hill in Kings Park. The sun is behind you, over the Indian Ocean, so everything in front of you is lit head-on.</p></div>
+</section>
+
+<button class="pill glass" id="skip" type="button">Skip intro</button>
+<p class="pill glass quiet" id="hint">Scroll to set the sun</p>
+
+<main id="track"><ol class="sr-only" id="srList"></ol></main>
+
+<script>
+(function () {
+'use strict';
+
+/* ================= basics ================= */
+const TZ = 'Australia/Perth';
+const LAT = -31.96088, LON = 115.84467, EYE = 60;      // State War Memorial, Kings Park; ground about 60 m above sea level
+const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
+let reduce = motionQuery.matches;
+if (motionQuery.addEventListener) motionQuery.addEventListener('change', e => { reduce = e.matches; });
+function mulberry(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+/* ================= sun (NOAA / Meeus, Saemundsson refraction) ================= */
+function solar(ms) {
+  const jd = ms / 86400000 + 2440587.5, T = (jd - 2451545) / 36525;
+  const L0 = ((280.46646 + T * (36000.76983 + T * 0.0003032)) % 360 + 360) % 360;
+  const M = 357.52911 + T * (35999.05029 - 0.0001537 * T);
+  const ecc = 0.016708634 - T * (0.000042037 + 0.0000001267 * T);
+  const Mr = M * D2R;
+  const C = Math.sin(Mr) * (1.914602 - T * (0.004817 + 0.000014 * T)) + Math.sin(2 * Mr) * (0.019993 - 0.000101 * T) + Math.sin(3 * Mr) * 0.000289;
+  const om = 125.04 - 1934.136 * T;
+  const lam = (L0 + C - 0.00569 - 0.00478 * Math.sin(om * D2R)) * D2R;
+  const eps0 = 23 + (26 + (21.448 - T * (46.815 + T * (0.00059 - T * 0.001813))) / 60) / 60;
+  const eps = (eps0 + 0.00256 * Math.cos(om * D2R)) * D2R;
+  const dec = Math.asin(Math.sin(eps) * Math.sin(lam));
+  let y = Math.tan(eps / 2); y *= y;
+  const L0r = L0 * D2R;
+  const eqt = 4 * R2D * (y * Math.sin(2 * L0r) - 2 * ecc * Math.sin(Mr) + 4 * ecc * y * Math.sin(Mr) * Math.cos(2 * L0r) - 0.5 * y * y * Math.sin(4 * L0r) - 1.25 * ecc * ecc * Math.sin(2 * Mr));
+  const utcMin = ((ms / 60000) % 1440 + 1440) % 1440;
+  const tst = ((utcMin + eqt + 4 * LON) % 1440 + 1440) % 1440;
+  const ha = (tst / 4 - 180) * D2R, lat = LAT * D2R;
+  const cz = clamp(Math.sin(lat) * Math.sin(dec) + Math.cos(lat) * Math.cos(dec) * Math.cos(ha), -1, 1);
+  const el = 90 - Math.acos(cz) * R2D;
+  let az = Math.atan2(Math.sin(ha), Math.cos(ha) * Math.sin(lat) - Math.tan(dec) * Math.cos(lat)) * R2D + 180;
+  az = ((az % 360) + 360) % 360;
+  const sae = h => 1.02 / Math.tan((h + 10.3 / (h + 5.11)) * D2R) / 60;
+  const r = el > 85 ? 0 : el > -1.9 ? sae(el) : sae(-1.9) * clamp(1 + (el + 1.9) / 3, 0, 1);
+  return { el: el, app: el + r, az: az };
+}
+function crossing(t0, t1, pick, target) {
+  let a = t0, b = t1;
+  for (let i = 0; i < 40; i++) { const m = (a + b) / 2; if (pick(solar(m)) > target) a = m; else b = m; }
+  return (a + b) / 2;
+}
+let tzOK = true;
+function localParts(ms) {
+  try {
+    const f = new Intl.DateTimeFormat('en-US', { timeZone: TZ, year: 'numeric', month: 'numeric', day: 'numeric' });
+    const o = {}; f.formatToParts(ms).forEach(p => { o[p.type] = p.value; });
+    return { y: +o.year, m: +o.month, d: +o.day };
+  } catch (e) { tzOK = false; const d = new Date(ms + 8 * 3600e3); return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, d: d.getUTCDate() }; }
+}
+let timeFmt = null, dateFmt = null;
+try {
+  timeFmt = new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit' });
+  dateFmt = new Intl.DateTimeFormat('en-US', { timeZone: TZ, month: 'long', day: 'numeric' });
+} catch (e) { tzOK = false; }
+function fmtTime(ms) {
+  if (timeFmt) return timeFmt.format(ms);
+  const d = new Date(ms + 8 * 3600e3); let h = d.getUTCHours(); const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12; return h + ':' + mm + ' ' + ap;
+}
+
+const today = localParts(Date.now());
+const T0 = Date.UTC(today.y, today.m - 1, today.d, 6, 0), T1 = T0 + 10 * 3600e3;   // 2 PM to midnight in Perth
+const geo = s => s.el, app = s => s.app;
+const tSunset = crossing(T0, T1, geo, -0.833);
+const tCivil = crossing(T0, T1, geo, -6);
+const tNaut = crossing(T0, T1, geo, -12);
+const tGolden = crossing(T0, T1, geo, 6);
+const tShadow = crossing(T0, T1, app, 1.8);       // Kings Park's shadow reaches the foot of the towers
+const tTopOut = crossing(T0, T1, app, -0.51);      // last light leaves the top of Central Park
+const toM = t => (t - tSunset) / 60000;
+const mCivil = toM(tCivil), mNaut = toM(tNaut), mGolden = toM(tGolden), mShadow = toM(tShadow);
+const topMins = Math.max(1, Math.round(toM(tTopOut)));
+const M0 = -45;
+const M1 = Math.max(72, mNaut + 15);
+const mToMs = m => tSunset + m * 60000;
+const antiAz = (solar(tSunset).az + 180) % 360;
+
+/* ================= the view: real bearings and distances from the State War Memorial ================= */
+const KX = 111.32 * Math.cos(LAT * D2R);
+function geoOf(lat, lon) { const dy = (lat - LAT) * 111.32, dx = (lon - LON) * KX; return { az: ((Math.atan2(dx, dy) * R2D) + 360) % 360, d: Math.hypot(dx, dy) }; }
+function elev(z, d) { const dm = d * 1000; return Math.atan((z - EYE - 0.87 * dm * dm / 12.74e6) / dm) * R2D; }
+
+function centredPhrase(az) {
+  const marks = [[80.7, 'right above the Bell Tower'], [79.6, 'right above Matagarup Bridge'], [75.5, 'right above Optus Stadium'], [88.0, 'over Crown, across the river'], [52.2, 'right above Central Park']];
+  let best = null, bd = 99;
+  marks.forEach(([a, t]) => { const d = Math.abs(a - az); if (d < bd) { bd = d; best = t; } });
+  if (bd <= 2) return best;
+  if (az < 50) return 'north of the city, to your left';
+  if (az > 100) return 'south of the river, to your right';
+  return 'over the river, between the towers and the hills';
+}
+
+/* ================= copy ================= */
+const chapters = [
+  { m: M0, text: 'Forty-five minutes before sunset on Kaarta Gar-up, the hill in Kings Park. The sun is behind you, over the Indian Ocean, so everything in front of you is lit head-on.' },
+  { m: Math.max(M0 + 6, mGolden - 2), text: 'Perth is the sunniest capital city in Australia, with about 8.8 hours of sunshine a day on average. Golden hour starts at ' + fmtTime(tGolden) + ', and this is where the light lands: on the glass of St Georges Terrace.' },
+  { m: mShadow - 9, text: 'Perth Water is still ruffled. In the warm months the Fremantle Doctor, the afternoon sea breeze, blows in from the southwest and swings round to the south by early evening.' },
+  { m: mShadow - 0.5, text: 'Watch the foot of the towers. The shadow climbing them is cast by Kings Park itself, the hill you are standing on.' },
+  { m: -0.5, text: 'Sunset at ' + fmtTime(tSunset) + '. The top of Central Park, at about 253 metres the tallest building in Perth, keeps the light for about ' + topMins + ' more minute' + (topMins > 1 ? 's' : '') + '.' },
+  { m: 4, text: 'Ahead of you, the Earth’s own shadow is rising over the Darling Scarp, Katta Moorda. The pink band above it is called the Belt of Venus. Tonight it is centred ' + centredPhrase(antiAz) + '.' },
+  { m: 12, text: 'The glass is still glowing. West-facing windows are reflecting the afterglow behind you, after the sun itself has left them.' },
+  { m: mCivil - 2, text: 'Civil twilight ends at ' + fmtTime(tCivil) + '. Matagarup Bridge lights about 900 metres of LEDs, and the roof of Optus Stadium turns into a colour field run by more than 15,000 of them.' },
+  { m: mCivil + 11, text: 'The Bell Tower lights its glass spire over Barrack Square. Inside hang 18 bells, twelve of them from St Martin-in-the-Fields in London.' },
+  { m: mNaut - 1, text: 'Nautical twilight ends at ' + fmtTime(tNaut) + '. The Derbarl Yerrigan, the Swan River, now carries the city’s light instead of the sky’s.' },
+  { m: M1 - 6, end: true }
+].sort((a, b) => a.m - b.m);
+
+const srList = document.getElementById('srList');
+chapters.forEach(c => { const li = document.createElement('li'); li.textContent = c.end ? 'Lights on. Sun times and positions are calculated live for Perth today.' : c.text; srList.appendChild(li); });
+if (dateFmt) document.getElementById('where').textContent = 'Perth, from Kings Park, ' + dateFmt.format(Date.now());
+
+const canvas = document.getElementById('scene');
+const titleEl = document.getElementById('title');
+const clockEl = document.getElementById('clock');
+const relEl = document.getElementById('rel');
+const altEl = document.getElementById('alt');
+const capEl = document.getElementById('caption');
+const capBody = document.getElementById('capBody');
+const railEl = document.getElementById('rail');
+const railDot = document.getElementById('railDot');
+const glareEl = document.getElementById('glare');
+const skipEl = document.getElementById('skip');
+const hintEl = document.getElementById('hint');
+
+const track = document.getElementById('track');
+function scrollMax() { return Math.max(1, track.offsetHeight - innerHeight); }
+function scrollToM() { return lerp(M0, M1, clamp(scrollY / scrollMax(), 0, 1)); }
+function mToScroll(m) { return (m - M0) / (M1 - M0) * scrollMax(); }
+[
+  { m: mGolden, l: 'Golden hour', t: tGolden },
+  { m: 0, l: 'Sunset', t: tSunset },
+  { m: mCivil, l: 'Civil twilight ends', t: tCivil },
+  { m: mNaut, l: 'Nautical twilight ends', t: tNaut }
+].forEach(k => {
+  if (k.m < M0) return;
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'mark';
+  b.style.top = ((k.m - M0) / (M1 - M0) * 100) + '%';
+  b.innerHTML = '<span class="l"></span><span class="t"></span><i></i>';
+  b.querySelector('.l').textContent = k.l;
+  b.querySelector('.t').textContent = fmtTime(k.t);
+  b.setAttribute('aria-label', 'Go to ' + k.l.toLowerCase() + ', ' + fmtTime(k.t));
+  b.addEventListener('click', () => { endIntro(); scrollTo({ top: mToScroll(k.m), behavior: reduce ? 'auto' : 'smooth' }); });
+  railEl.appendChild(b);
+});
+
+/* ================= geography ================= */
+// named towers: lat, lon, roof (m), top incl. spire or mast (m), width (m), shape, material (5 glass, 4 stone), ground (m)
+const TOWERS = [
+  ['Central Park', -31.95367, 115.85561, 226, 252.9, 46, 'crown', 5, 15],
+  ['Brookfield Place', -31.95482, 115.85486, 204, 234.4, 50, 'blade', 5, 15],
+  ['108 St Georges Terrace', -31.95444, 115.85708, 214, 247, 40, 'mast', 5, 15],
+  ['QV1', -31.95238, 115.85093, 163, 163, 46, 'flat', 5, 20],
+  ['Exchange Plaza', -31.95639, 115.85861, 146, 146, 46, 'flat', 5, 8],
+  ['St Martins Tower', -31.9551, 115.8593, 140, 140, 34, 'flat', 4, 12],
+  ['One The Esplanade', -31.95722, 115.85833, 133, 133, 42, 'flat', 5, 5],
+  ['David Malcolm Justice Centre', -31.955, 115.86028, 149, 149, 40, 'flat', 4, 12],
+  ['Council House', -31.95667, 115.86075, 50, 50, 72, 'flat', 4, 12],
+  ['Crown Towers', -31.95944, 115.89389, 105, 105, 85, 'flat', 5, 5],
+  ['Crown Metropol', -31.9603, 115.8921, 60, 60, 60, 'flat', 5, 5]
+];
+const BELL = { lat: -31.959, lon: 115.85827, top: 82.5, ground: 2 };
+const STADIUM = { lat: -31.95111, lon: 115.88917, roof: 45, ground: 5, width: 300 };
+const MATAGARUP = { lat: -31.95452, lon: 115.88538, top: 72 };
+// shoreline of Perth Water (approximate, from the map), as bearing and elevation angle
+const FAR_SHORE = [[82.6, -2.77], [85.9, -2.49], [88.8, -1.69], [92.2, -1.05], [96.5, -1.11], [108.1, -1.17], [125, -1.92], [155.2, -2.38], [170, -6.5], [200, -6.5]];
+const NEAR_SHORE = [[82.6, -3.61], [109.5, -8.97], [125, -11.5], [140, -12.6], [165, -9.2], [200, -8]];
+
+function interp(pts, a) {
+  if (a <= pts[0][0]) return pts[0][1];
+  for (let i = 1; i < pts.length; i++) if (a <= pts[i][0]) { const p = pts[i - 1], q = pts[i]; return lerp(p[1], q[1], (a - p[0]) / (q[0] - p[0])); }
+  return pts[pts.length - 1][1];
+}
+
+/* ================= projection & layout ================= */
+let W = 0, H = 0, scale = 1, perfCap = 1.6;
+let pxH = 20, pxV = 30, eyeY = 450, center = 88, wx = 1.4;
+const X = az => W / 2 + (az - center) * pxH;
+const Y = el => eyeY - el * pxV;
+const azOf = x => center + (x - W / 2) / pxH;
+
+const covC = document.createElement('canvas');
+const codeC = document.createElement('canvas');
+const blackC = document.createElement('canvas');   // structures that hide farther lights
+const fgBlack = document.createElement('canvas');  // foreground trees
+const lightsC = document.createElement('canvas');
+const lightsCtx = lightsC.getContext('2d');
+const BIN_E = [-0.4, -1.6, -2.8, -4.0, -5.3, -6.8];
+let winBins = [], sprawlBins = [];
+let beacons = [], halo = [], arches = [], roads = [], spire = null, shoreY = null;
+
+function codeColor(id, dKm, seed) { return 'rgb(' + (id * 16) + ',' + Math.round(clamp(dKm / 8, 0, 1) * 255) + ',' + Math.round(seed * 255) + ')'; }
+
+function towerRects(rnd) {
+  // filler blocks around the named towers: CBD and East Perth
+  const out = [];
+  for (let i = 0; i < 70; i++) {
+    const lat = lerp(-31.9576, -31.9506, rnd()), lon = lerp(115.8505, 115.8668, rnd());
+    let h = 28 + Math.pow(rnd(), 1.7) * 105;
+    const az = geoOf(lat, lon).az; if (az > 72.5 && az < 81) h = Math.min(h, 24);
+    out.push(['', lat, lon, h, h, 22 + rnd() * 24, 'flat', rnd() < 0.6 ? 5 : 4, 15]);
+  }
+  for (let i = 0; i < 34; i++) {
+    const lat = lerp(-31.9588, -31.9522, rnd()), lon = lerp(115.8665, 115.8795, rnd());
+    let h = 12 + rnd() * 34;
+    const az = geoOf(lat, lon).az; if (az > 72.5 && az < 81) h = Math.min(h, 16);
+    out.push(['', lat, lon, h, h, 24 + rnd() * 22, 'flat', rnd() < 0.35 ? 5 : 4, 8]);
+  }
+  return out;
+}
+
+function makeLayers() {
+  const cw = Math.round(W * scale), ch = Math.round(H * scale);
+  [covC, codeC, blackC, fgBlack, lightsC].forEach(c => { c.width = cw; c.height = ch; });
+  const mk = c => { const x = c.getContext('2d'); x.setTransform(scale, 0, 0, scale, 0, 0); return x; };
+  const cov = mk(covC), code = mk(codeC), blk = mk(blackC), fgb = mk(fgBlack);
+  cov.fillStyle = '#000'; cov.fillRect(0, 0, W, H);
+  code.fillStyle = '#000'; code.fillRect(0, 0, W, H);
+  blk.clearRect(0, 0, W, H); fgb.clearRect(0, 0, W, H);
+  const rnd = mulberry(4242);
+  // draw a shape into coverage and code (dilated so code covers every partially covered pixel)
+  const shape = (pathFn, id, dKm, seed, toBlack) => {
+    cov.fillStyle = '#fff'; cov.beginPath(); pathFn(cov); cov.fill();
+    code.fillStyle = code.strokeStyle = codeColor(id, dKm, seed); code.lineWidth = 1.6; code.lineJoin = 'round';
+    code.beginPath(); pathFn(code); code.fill(); code.stroke();
+    if (toBlack) { toBlack.fillStyle = '#000'; toBlack.beginPath(); pathFn(toBlack); toBlack.fill(); }
+  };
+  const a0 = azOf(-40), a1 = azOf(W + 40), step = Math.max(0.05, 1.5 / pxH);
+
+  // 1. Darling Scarp (Katta Moorda), about 18-27 km east, ridge 250-400 m
+  const scarpZ = a => 300 + 34 * Math.sin(a * 0.21) + 22 * Math.sin(a * 0.57 + 1.3) + 9 * Math.sin(a * 1.9);
+  const scarpD = a => 20 + 3.5 * Math.sin(a * 0.09);
+  shape(c => {
+    c.moveTo(X(a0), Y(-0.6));
+    for (let a = a0; a <= a1; a += step) c.lineTo(X(a), Y(elev(scarpZ(a) + (rnd() - 0.5) * 6, scarpD(a))));
+    c.lineTo(X(a1), Y(-0.6)); c.closePath();
+  }, 1, 20, 0.3, null);
+
+  // 2. the coastal plain and the far bank: suburbs from the scarp foot to the river
+  const plainTop = -0.26;
+  const plainBottom = a => (a < 82.6 ? -2.75 : interp(FAR_SHORE, a));
+  shape(c => {
+    c.moveTo(X(a0), Y(plainTop));
+    for (let a = a0; a <= a1; a += step) c.lineTo(X(a), Y(plainTop + (rnd() - 0.5) * 0.03));
+    for (let a = a1; a >= a0; a -= step) c.lineTo(X(a), Y(plainBottom(a)));
+    c.closePath();
+  }, 2, 0, 0.5, null);
+
+  // 3. Optus Stadium: a wide bowl with a fabric roof
+  {
+    const g = geoOf(STADIUM.lat, STADIUM.lon), hw = Math.atan(STADIUM.width / 2000 / g.d) * R2D;
+    const yT = Y(elev(STADIUM.roof + STADIUM.ground, g.d)), yB = Y(elev(STADIUM.ground, g.d));
+    const xl = X(g.az - hw), xr = X(g.az + hw);
+    shape(c => { c.moveTo(xl, yB); c.lineTo(xl + (xr - xl) * 0.06, yT + (yB - yT) * 0.25); c.quadraticCurveTo((xl + xr) / 2, yT - (yB - yT) * 0.12, xr - (xr - xl) * 0.06, yT + (yB - yT) * 0.25); c.lineTo(xr, yB); c.closePath(); }, 3, g.d, 0.2, null);
+    halo = [];
+    for (let i = 0; i <= 90; i++) {
+      const t = i / 90, x = lerp(xl + (xr - xl) * 0.06, xr - (xr - xl) * 0.06, t);
+      const yy = (1 - t) * (1 - t) * (yT + (yB - yT) * 0.25) + 2 * (1 - t) * t * (yT - (yB - yT) * 0.12) + t * t * (yT + (yB - yT) * 0.25);
+      halo.push([x, yy, t]);
+    }
+    halo.base = [xl, xr, yB, yT];
+  }
+
+  // 4. Matagarup Bridge: wave-like arches, seen almost end-on
+  {
+    const g = geoOf(MATAGARUP.lat, MATAGARUP.lon);
+    const yTop = Y(elev(MATAGARUP.top + 2, g.d)), yB = Y(elev(2, g.d));
+    const spans = [[-1.25, -0.35, 0.55], [-0.45, 0.45, 1], [0.35, 1.2, 0.6]];
+    arches = spans.map(([s0, s1, k]) => ({ x0: X(g.az + s0 * wx * 0.7), x1: X(g.az + s1 * wx * 0.7), yB, yT: lerp(yB, yTop, k) }));
+    shape(c => {
+      arches.forEach(a => { c.moveTo(a.x0, a.yB); c.quadraticCurveTo((a.x0 + a.x1) / 2, 2 * a.yT - a.yB, a.x1, a.yB); c.lineTo(a.x1 - 1.4, a.yB); c.quadraticCurveTo((a.x0 + a.x1) / 2, 2 * (a.yT + 1.6) - a.yB, a.x0 + 1.4, a.yB); c.closePath(); });
+      c.rect(arches[0].x0, yB - 1.2, arches[2].x1 - arches[0].x0, 1.6);
+    }, 9, g.d, 0.4, null);
+  }
+
+  // 5. towers, painted far to near
+  const all = TOWERS.concat(towerRects(rnd)).map(t => { const g = geoOf(t[1], t[2]); return { t, g }; }).sort((p, q) => q.g.d - p.g.d);
+  const winRegions = [];
+  beacons = [];
+  all.forEach(({ t, g }) => {
+    const [name, , , roof, top, width, kind, mat, ground] = t;
+    const hw = Math.atan(width / 2000 / g.d) * R2D * wx;
+    const x0 = X(g.az - hw), x1 = X(g.az + hw), w = x1 - x0, cx = (x0 + x1) / 2;
+    if (x1 < -20 || x0 > W + 20) return;
+    const yB = Y(elev(ground, g.d)) + 1, yR = Y(elev(ground + roof, g.d)), yT = Y(elev(ground + top, g.d));
+    const seed = rnd();
+    shape(c => {
+      if (kind === 'crown') {
+        c.rect(x0, yR, w, yB - yR);
+        c.moveTo(x0 + w * 0.12, yR); c.lineTo(cx - w * 0.16, yR - (yR - yT) * 0.45); c.lineTo(cx + w * 0.16, yR - (yR - yT) * 0.45); c.lineTo(x1 - w * 0.12, yR); c.closePath();
+        c.rect(cx - Math.max(0.6, w * 0.03), yT, Math.max(1.2, w * 0.06), yR - yT);
+      } else if (kind === 'blade') {
+        c.rect(x0, yR, w, yB - yR);
+        c.rect(x0 + w * 0.62, yT, w * 0.2, yR - yT + 1);
+      } else if (kind === 'mast') {
+        c.moveTo(x0, yB); c.lineTo(x0, yR + w * 0.1); c.lineTo(x0 + w * 0.2, yR); c.lineTo(x1 - w * 0.2, yR); c.lineTo(x1, yR + w * 0.1); c.lineTo(x1, yB); c.closePath();
+        c.rect(cx - 0.7, yT, 1.4, yR - yT);
+      } else {
+        c.rect(x0, yR, w, yB - yR);
+      }
+    }, mat, g.d, seed, blackC.getContext('2d'));
+    winRegions.push({ x0: x0 + 1, x1: x1 - 1, yT: yR + 2, yB: yB - 3, d: g.d, mat });
+    if (top > 200 || name === 'QV1') beacons.push({ x: cx, y: yT - 0.5, kind: 'pulse', ph: seed, size: 1.5 });
+  });
+
+  // 6. the Bell Tower on Barrack Square: copper sails around a glass spire
+  {
+    const g = geoOf(BELL.lat, BELL.lon);
+    const yB = Y(elev(BELL.ground, g.d)) + 1, yT = Y(elev(BELL.ground + BELL.top, g.d)), ySail = Y(elev(BELL.ground + 32, g.d));
+    const cx = X(g.az), hb = Math.max(4, Math.atan(0.009 / g.d) * R2D * pxH * wx);
+    const path = c => { c.moveTo(cx - hb * 0.9, yB); c.quadraticCurveTo(cx - hb * 0.95, ySail + (yB - ySail) * 0.3, cx - hb * 0.22, ySail); c.lineTo(cx - hb * 0.12, ySail - (ySail - yT) * 0.35); c.lineTo(cx, yT); c.lineTo(cx + hb * 0.12, ySail - (ySail - yT) * 0.4); c.lineTo(cx + hb * 0.3, ySail + 1); c.quadraticCurveTo(cx + hb * 0.9, ySail + (yB - ySail) * 0.35, cx + hb * 0.8, yB); c.closePath(); };
+    shape(path, 8, g.d, 0.6, blackC.getContext('2d'));
+    spire = { path, cx, yT, ySail, hb };
+  }
+
+  // 7. the near bank under the city and the foot of the hill
+  shape(c => {
+    c.moveTo(X(a0), Y(-2.75));
+    for (let a = a0; a <= 82; a += step) c.lineTo(X(a), Y(-2.75 - (rnd() * 0.05)));
+    c.lineTo(X(82.6), Y(-3.61));
+    for (let a = 82.6; a <= a1; a += step) c.lineTo(X(a), Y(interp(NEAR_SHORE, a)));
+    c.lineTo(X(a1), H + 4); c.lineTo(X(a0), H + 4); c.closePath();
+  }, 6, 0, 0.7, null);
+  // the city's lower blocks sit on that bank and hide what is behind them
+  // 8. foreground: bush on the escarpment of Kings Park
+  {
+    const r2 = mulberry(77);
+    const canopy = x => {
+      const a = azOf(x);
+      let el = a <= 82 ? -4.3 : Math.min(-4.3, interp(NEAR_SHORE, a) - 1.4);
+      const fr = (x / W - 0.86) / 0.14; if (fr > 0) el = lerp(el, -2.2, smooth(0, 1, fr));
+      return el + 0.35 * Math.sin(a * 0.9) + 0.2 * Math.sin(a * 2.7 + 1.1);
+    };
+    const crowns = [];
+    for (let x = -24; x <= W + 24;) { const r = (4 + r2() * 9) * (0.8 + pxV / 40); crowns.push([x, Y(canopy(x)) + r * (0.35 + r2() * 0.5), r]); x += r * (0.9 + r2() * 0.6); }
+    shape(c => {
+      c.moveTo(-30, H + 4);
+      crowns.forEach(([x, y, r]) => c.lineTo(x, y + r * 0.6));
+      c.lineTo(W + 30, H + 4); c.closePath();
+      crowns.forEach(([x, y, r]) => { c.moveTo(x + r, y); c.arc(x, y, r, 0, 6.2832); });
+    }, 7, 0.15, 0.8, fgb);
+  }
+
+  // ---- static lights: windows on towers, and the sprawl across the plain ----
+  const mkBins = () => BIN_E.map(() => { const c = document.createElement('canvas'); c.width = cw; c.height = ch; const x = mk(c); x.globalCompositeOperation = 'lighter'; return { c, x }; });
+  winBins = mkBins(); sprawlBins = mkBins();
+  const rw = mulberry(99);
+  winRegions.forEach(r => {
+    const floor = Math.max(2.2, pxV * Math.atan(3.7 / (r.d * 1000)) * R2D);
+    const col = Math.max(1.8, floor * 0.75);
+    const dens = r.mat === 5 ? 0.3 : 0.22;
+    const tint = r.mat === 5 ? (rw() < 0.7 ? '226,236,255' : '255,236,205') : (rw() < 0.6 ? '255,210,150' : '255,228,190');
+    for (let y = r.yT + 1; y < r.yB; y += floor) {
+      for (let x = r.x0; x < r.x1;) {
+        if (rw() < dens) {
+          const run = 1 + Math.floor(rw() * 5), bi = Math.floor(rw() * BIN_E.length), a = 0.28 + rw() * 0.5;
+          winBins[bi].x.fillStyle = 'rgba(' + tint + ',' + a.toFixed(2) + ')';
+          for (let k = 0; k < run && x < r.x1; k++, x += col) winBins[bi].x.fillRect(x, y, Math.min(1.1, col * 0.6), Math.min(1.1, floor * 0.5));
+        } else x += col;
+      }
+    }
+  });
+  const sprawl = (aA, aB, elTop, elBot, dens, size) => {
+    for (let a = aA; a < aB; a += 1.2 / pxH) {
+      const bot = typeof elBot === 'function' ? elBot(a) : elBot;
+      for (let el = elTop; el > bot; el -= 1.1 / pxV) {
+        const near = clamp((elTop - el) / (elTop - bot + 1e-6), 0, 1);
+        if (rw() < dens * (0.35 + near * 0.9)) {
+          const bi = Math.floor(rw() * BIN_E.length), warm = rw() < 0.7;
+          sprawlBins[bi].x.fillStyle = warm ? 'rgba(255,196,128,' + (0.25 + rw() * 0.5).toFixed(2) + ')' : 'rgba(225,235,255,' + (0.2 + rw() * 0.4).toFixed(2) + ')';
+          const s = size * (0.6 + near * 0.8);
+          sprawlBins[bi].x.fillRect(X(a) + (rw() - 0.5), Y(el), s, s);
+        }
+      }
+    }
+  };
+  sprawl(azOf(0), azOf(W), plainTop - 0.02, a => plainBottom(a) + 0.05, 0.2, 0.9);
+  sprawl(azOf(0), azOf(W), 0.42, -0.2, 0.025, 0.8);               // houses up on the scarp
+  sprawl(azOf(0), 82, -1.35, -2.7, 0.12, 1.1);                    // streets under the towers
+
+  // ---- moving and switched lights ----
+  roads = [];
+  const roadPath = (pts, n) => { const out = []; for (let i = 0; i <= n; i++) { const t = i / n, a = lerp(pts[0][0], pts[1][0], t); out.push([X(a), Y(lerp(pts[0][1], pts[1][1], t))]); } return out; };
+  roads.push({ pts: roadPath([[82.4, -3.48], [109, -8.75]], 60), cars: 26, speed: 0.05, near: true });   // Mounts Bay Road, below the hill
+  roads.push({ pts: roadPath([[85.9, -2.42], [92.0, -1.02]], 40), cars: 18, speed: 0.035, near: false }); // Riverside Drive
+  roads.push({ pts: roadPath([[92.2, -1.0], [108.0, -1.12]], 40), cars: 16, speed: 0.025, near: false }); // the Causeway
+  roads.forEach(r => { r.car = []; for (let i = 0; i < r.cars; i++) r.car.push({ s: rw(), v: r.speed * (0.7 + rw() * 0.6), dir: rw() < 0.5 ? 1 : -1 }); });
+
+  // shoreline per device column, for mirroring the far bank in the water
+  shoreY = new Float32Array(cw * 4);
+  for (let i = 0; i < cw; i++) { const a = azOf(i / scale); shoreY[i * 4] = a >= 82.6 ? Y(interp(FAR_SHORE, a)) : Y(-2.75); }
+}
+
+function layout() {
+  W = innerWidth; H = innerHeight;
+  scale = Math.min(window.devicePixelRatio || 1, perfCap);
+  const portrait = H > W;
+  pxV = clamp(H / 30, 20, 44);
+  pxH = Math.min(pxV, W / (portrait ? 34 : 66));
+  eyeY = Math.round(H * 0.5);
+  center = portrait ? 76 : 80;
+  wx = clamp(pxV / pxH * 0.62, 1, 1.9);
+  canvas.width = Math.round(W * scale); canvas.height = Math.round(H * scale);
+  makeLayers();
+  if (gl) uploadStatic();
+}
+
+/* ================= palette rows by sun elevation (looking east, sun behind you) ================= */
+const KE = [12, 6, 3, 1, 0, -1, -2, -4, -6, -9, -12, -18];
+const PAL = [
+  ['#C9D6E6', '#D3D5DA', '#E2D2CC', '#E8C9C6', '#D9BDC4', '#B7A9C0', '#9A9AB8', '#6F7598', '#4A4F72', '#2C3150', '#1C2038', '#18172A'], // 0 east horizon
+  ['#A9C1DE', '#B4C2D8', '#C4C3D2', '#C9BDCB', '#BFB0C6', '#A8A2C0', '#8C8FB4', '#646C96', '#3F4772', '#232B4E', '#141B36', '#0C1126'], // 1 low sky
+  ['#7FA3D2', '#86A3CF', '#8FA2C9', '#929FC4', '#8B98BE', '#7E8BB5', '#6C7AAA', '#4D5C8E', '#33416E', '#1C2648', '#111933', '#090F22'], // 2 mid sky
+  ['#5C88C6', '#628AC4', '#6A8BBF', '#6C88BA', '#6680B3', '#5B76A9', '#506B9F', '#3C5585', '#283E68', '#172645', '#0E1731', '#070C1E'], // 3 upper sky
+  ['#E7C4C0', '#E9BFC0', '#EDB5BE', '#EBA9BC', '#E59DB8', '#D492B2', '#C089AE', '#9C7AA2', '#6E5E86', '#3E3A5E', '#262540', '#1A1A30'], // 4 Belt of Venus
+  ['#9FA8C2', '#97A0BC', '#8D96B4', '#7E88AA', '#6F7AA0', '#626D95', '#56618A', '#454F76', '#353E63', '#252C4A', '#181E36', '#10142A'], // 5 Earth's shadow
+  ['#FFE7BE', '#FFD59A', '#FFB874', '#FF9A58', '#FF7E4C', '#F2665A', '#E05A66', '#E05A66', '#E05A66', '#E05A66', '#E05A66', '#E05A66'], // 6 sunlight
+  ['#7E8FB0', '#7D8BAA', '#7C85A4', '#7A80A0', '#73789A', '#6A6F92', '#5F6589', '#4B5276', '#373E61', '#232945', '#151A31', '#0D1124'], // 7 sky fill light
+  ['#F6E7C8', '#FBD9A0', '#FFC07A', '#FFA868', '#FF9260', '#F57A62', '#DB6A6C', '#A85A78', '#6E4870', '#3A3156', '#20203A', '#151628'], // 8 the western sky, seen in glass
+  ['#B9C3D6', '#BCC0CF', '#C3BCC6', '#C4B4BE', '#B8A8B7', '#A097AE', '#8686A2', '#636789', '#454B6C', '#2B3150', '#1C2138', '#14182A'], // 9 haze
+  ['#2A3247', '#283044', '#262D40', '#252B3D', '#232839', '#202535', '#1D2131', '#181C2B', '#131726', '#0E111E', '#0A0D18', '#070912'], // 10 deep water
+  ['#FFFFFF', '#FFF4E6', '#FFE2CF', '#FFD0C8', '#F5C0C8', '#E4AEC4', '#C89ABA', '#8C7AA0', '#5A557A', '#33334F', '#22243A', '#1A1B2E']  // 11 high cloud
+];
+const NROWS = PAL.length;
+const hexRGB = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+function palAt(row, e) {
+  const ks = PAL[row];
+  if (e >= KE[0]) return hexRGB(ks[0]);
+  for (let i = 1; i < KE.length; i++) if (e >= KE[i]) { const t = (KE[i - 1] - e) / (KE[i - 1] - KE[i]); const a = hexRGB(ks[i - 1]), b = hexRGB(ks[i]); return [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)]; }
+  return hexRGB(ks[ks.length - 1]);
+}
+function makePalette() {
+  const c = document.createElement('canvas'); c.width = 128; c.height = NROWS;
+  const x = c.getContext('2d'); const img = x.createImageData(128, NROWS);
+  for (let r = 0; r < NROWS; r++) for (let i = 0; i < 128; i++) {
+    const v = palAt(r, 12 - i / 127 * 32), o = (r * 128 + i) * 4;
+    img.data[o] = v[0]; img.data[o + 1] = v[1]; img.data[o + 2] = v[2]; img.data[o + 3] = 255;
+  }
+  x.putImageData(img, 0, 0); return c;
+}
+
+/* ================= WebGL ================= */
+const VS = `#version 300 es
+in vec2 aP; void main(){ gl_Position = vec4(aP, 0.0, 1.0); }`;
+const FS = `#version 300 es
+precision highp float;
+uniform vec2 uRes; uniform float uScale; uniform float uTime; uniform float uMotion;
+uniform float uE; uniform float uEye; uniform float uPxV; uniform float uPxH; uniform float uCenterAz;
+uniform float uAntiAz; uniform float uRipple; uniform vec3 uHalo;
+uniform sampler2D uPal; uniform sampler2D uCov; uniform sampler2D uCode; uniform sampler2D uLights; uniform sampler2D uShore;
+out vec4 outColor;
+
+float ss(float a, float b, float x){ float t = clamp((x - a)/(b - a), 0., 1.); return t*t*(3. - 2.*t); }
+float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx)*.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y)*p3.z); }
+float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f*f*(3. - 2.*f);
+  return mix(mix(hash12(i), hash12(i + vec2(1., 0.)), u.x), mix(hash12(i + vec2(0., 1.)), hash12(i + vec2(1., 1.)), u.x), u.y); }
+float fbm(vec2 p){ float s = 0., a = .5; for (int i = 0; i < 4; i++){ s += a*vnoise(p); p = p*2.03 + vec2(17.1, 9.3); a *= .5; } return s/.9375; }
+vec3 pal(float row, float e){ float u = clamp((12. - e)/32., 0., 1.); return texture(uPal, vec2(u*(127./128.) + .5/128., (row + .5)/12.)).rgb; }
+
+vec3 sky(vec2 p, float h, float az){
+  float v = clamp(h/16., 0., 1.2);
+  vec3 c = mix(pal(0., uE), pal(1., uE), ss(0., .25, v));
+  c = mix(c, pal(2., uE), ss(.2, .65, v));
+  c = mix(c, pal(3., uE), ss(.55, 1.1, v));
+  float azF = .55 + .45*cos(radians(az - uAntiAz));
+  // the Earth's shadow and the Belt of Venus, opposite the sun
+  float st = max(0., -uE*1.05 + .25);
+  float shadowA = ss(1.2, -.3, uE)*ss(-9., -5., uE);
+  float inShadow = 1. - ss(st - .5, st + .9, h);
+  c = mix(c, pal(5., uE), inShadow*shadowA*(.72 + .28*azF));
+  float bf = ss(st - .2, st + 1.6, h)*(1. - ss(st + 3.5, st + 11., h));
+  float beltA = ss(2.4, .1, uE)*ss(-6.5, -1.5, uE);
+  c = mix(c, pal(4., uE), bf*beltA*azF*.85);
+  // city glow and stars after dark
+  float night = ss(-6., -12., uE);
+  c += vec3(.15, .09, .06)*night*exp(-max(h, 0.)/2.4)*(.55 + .45*exp(-abs(az - 62.)/24.));
+  float t = uTime*uMotion;
+  // thin high cloud, catching colour longer than the sky below it
+  float band = ss(6., 9., h);
+  float D = 0.;
+  if (band > 0.){
+    float n = fbm(vec2(az*.045 + t*.002, h*.55));
+    D = ss(.6, .84, n)*band*.7;
+    if (D > .001){ vec3 cl = pal(11., uE + h*.12); c = mix(c, cl, D); }
+  }
+  float sa = ss(-9., -14., uE)*ss(1., 5., h)*(1. - D);
+  if (sa > 0.){ vec2 g = floor(p/2.); float r = hash12(g);
+    if (r > .9975){ vec2 f = fract(p/2.) - .5; c += vec3(.85, .9, 1.)*ss(.55, 0., length(f))*sa*(r - .9975)*400.*(.7 + .3*sin(t*(1. + r*3.) + r*40.)); } }
+  return c;
+}
+
+vec3 shade(vec2 p, float h, vec3 code){
+  float id = floor(code.r*255./16. + .5);
+  float dk = code.g*8.;
+  float seed = code.b;
+  float e = uE;
+  if (id < .5) return vec3(0.);
+  if (id == 1.) dk = 20.;
+  if (id == 2.) dk = .052/tan(radians(max(-h, .04)));
+  if (id == 6.) dk = .056/tan(radians(max(-h, .25)));
+  if (id == 7.) dk = .15;
+  float z = 60. + dk*1000.*tan(radians(h));
+  float er = radians(e);
+  float hs = 75. - (dk + .7)*1000.*tan(er);
+  if (e < 0.) hs = max(hs, 6.37e6*er*er*.5);
+  float lit = ss(hs - 4., hs + 4., z);
+  if (id == 7.) lit = ss(-.4, .8, e);
+  vec3 sunC = pal(6., e)*mix(.6, 1.05, ss(-.6, 3., e));
+  vec3 amb = pal(7., e);
+  float lightsOn = ss(-1.5, -6.5, e);
+  vec3 alb = vec3(.62, .6, .56);
+  if (id == 1.) alb = vec3(.36, .4, .36);
+  if (id == 2.) alb = vec3(.44, .45, .41)*(.85 + .3*fbm(p*vec2(.06, .3)));
+  if (id == 3.) alb = vec3(.86, .85, .82);
+  if (id == 4.) alb = vec3(.6, .59, .57)*(.85 + .3*seed);
+  if (id == 5.) alb = vec3(.36, .42, .5)*(.8 + .4*seed);
+  if (id == 6.) alb = vec3(.38, .4, .36)*(.8 + .4*fbm(p*.08));
+  if (id == 7.) alb = vec3(.19, .22, .16)*(.65 + .7*fbm(p*.11));
+  if (id == 8.) alb = z < 34. ? vec3(.55, .42, .35) : vec3(.55, .66, .74);
+  if (id == 9.) alb = vec3(.9, .9, .9);
+  vec3 col = alb*(amb*.62 + sunC*lit*1.1);
+  float fp = max(1.5, uPxV*degrees(atan(3.7/(dk*1000.))));
+  if (id == 5. || (id == 8. && z >= 34.)){
+    vec2 g = vec2(p.x/(fp*1.35), p.y/fp);
+    vec2 cell = floor(g + seed*37.);
+    float pn = hash12(cell + seed*91.);
+    vec3 refl = mix(pal(8., e), pal(3., e)*.85, ss(-1., 9., h));
+    refl *= .62 + .28*fbm(vec2(p.x*.025 + seed*13., p.y*.007 + seed*5.)) + .08*pn;
+    col = mix(col, refl, .6);
+    float glint = pow(vnoise(vec2(p.x*.05 + seed*17., p.y*.014 + seed*3.)), 5.)*1.5 + pow(pn, 16.)*1.1;
+    col += sunC*lit*glint*ss(10., 1., e);
+    vec2 f = fract(g);
+    col *= .93 + .07*step(.12, f.y)*step(.08, f.x);
+  }
+  if (id == 4.) col *= .9 + .1*step(.3, fract(p.y/fp));
+  if (id == 8. && z >= 34.) col += vec3(.62, .82, 1.)*lightsOn*.6;
+  if (id == 3.){ col += uHalo*lightsOn*.34 + vec3(1., .9, .75)*lightsOn*.06; }
+  col = mix(col, pal(9., e), 1. - exp(-dk/(id == 1. ? 34. : 14.)));
+  return col;
+}
+
+vec3 landAt(vec2 p, float W, float Hh, out float cov){
+  vec2 uv = p/vec2(W, Hh);
+  cov = texture(uCov, uv).r;
+  if (cov < .002) return vec3(0.);
+  ivec2 ip = clamp(ivec2(p*uScale), ivec2(0), ivec2(uRes) - 1);
+  vec3 code = texelFetch(uCode, ip, 0).rgb;
+  float h = (uEye - p.y)/uPxV;
+  return shade(p, h, code);
+}
+
+void main(){
+  vec2 cs = uRes/uScale; float W = cs.x, Hh = cs.y;
+  vec2 p = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y)/uScale;
+  vec2 uv = p/cs;
+  float t = uTime*uMotion;
+  float h = (uEye - p.y)/uPxV;
+  float az = uCenterAz + (p.x - W*.5)/uPxH;
+  float cov;
+  vec3 land = landAt(p, W, Hh, cov);
+  vec3 L = texture(uLights, uv).rgb;
+  vec3 c;
+  if (cov > .998) c = land;
+  else if (p.y < uEye) c = mix(sky(p, h, az), land, cov);
+  else {
+    // Perth Water: mirror the far bank, broken up by the sea breeze
+    float dep = max(-h, .05);
+    float dist = 60./tan(radians(dep));
+    float nearF = ss(1., 9., dep);
+    vec2 wq = vec2((p.x - W*.5)/uPxH*dist*.0012, dist*.012);
+    float n1 = fbm(wq + vec2(0., -t*.35));
+    float n2 = fbm(wq*1.7 + vec2(5.2, t*.25));
+    float n3 = vnoise(vec2(p.x*.04, dist*.05 - t*1.2));
+    float offY = ((n1 - .5)*(3. + 22.*nearF) + (n3 - .5)*(2. + 6.*nearF))*uRipple;
+    float offX = (n2 - .5)*(2. + 9.*nearF)*uRipple;
+    float sy = texelFetch(uShore, ivec2(int(gl_FragCoord.x), 0), 0).r;
+    vec2 mp = vec2(p.x + offX, min(2.*sy - p.y + offY, sy - .5));
+    float hm = (uEye - mp.y)/uPxV;
+    float azm = uCenterAz + (mp.x - W*.5)/uPxH;
+    float covm;
+    vec3 lm = landAt(mp, W, Hh, covm);
+    vec3 r = mp.y < uEye ? mix(sky(mp, hm, azm), lm, covm) : lm;
+    float fres = mix(.86, .32, ss(.8, 9., dep));
+    vec3 base = mix(pal(10., uE), pal(1., uE)*.6, .35);
+    vec3 wat = mix(base, r, fres);
+    vec3 Lr = vec3(0.);
+    float st = 1.3 + 4.*nearF;
+    for (int i = -3; i <= 3; i++){ vec2 q = vec2(mp.x + (n2 - .5)*3.*float(i), mp.y + float(i)*st); Lr += textureLod(uLights, q/cs, 1.).rgb; }
+    wat += Lr/7.*(.55 + .9*vnoise(vec2(p.x*.09, p.y*.8 - t*2.)))*1.5*(1. - nearF*.4);
+    c = mix(wat, land, cov);
+  }
+  c += L;
+  c += textureLod(uLights, uv, 2.5).rgb*.3 + textureLod(uLights, uv, 4.).rgb*.45 + textureLod(uLights, uv, 5.5).rgb*.42;
+  c = max(c, 0.);
+  vec3 over = max(c - .82, 0.);
+  c = min(c, vec3(.82)) + .18*(1. - exp(-over/.18));
+  vec2 vv = (uv - .5)*vec2(1.1, 1.4);
+  c *= 1. - .2*dot(vv, vv);
+  c += (hash12(gl_FragCoord.xy + fract(uTime*7.)*91.) - .5)*(3./255.);
+  outColor = vec4(c, 1.);
+}`;
+
+let gl = null, prog = null, U = {}, tex = {};
+function initGL() {
+  try { gl = canvas.getContext('webgl2', { antialias: false, alpha: false, depth: false, stencil: false, premultipliedAlpha: false, powerPreference: 'high-performance' }); } catch (e) { gl = null; }
+  if (!gl) return false;
+  const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { console.error(gl.getShaderInfoLog(s)); return null; } return s; };
+  const vs = sh(gl.VERTEX_SHADER, VS), fs = sh(gl.FRAGMENT_SHADER, FS);
+  if (!vs || !fs) { gl = null; return false; }
+  prog = gl.createProgram(); gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) { console.error(gl.getProgramInfoLog(prog)); gl = null; return false; }
+  gl.useProgram(prog);
+  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, 'aP'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  ['uRes', 'uScale', 'uTime', 'uMotion', 'uE', 'uEye', 'uPxV', 'uPxH', 'uCenterAz', 'uAntiAz', 'uRipple', 'uHalo', 'uPal', 'uCov', 'uCode', 'uLights', 'uShore'].forEach(n => { U[n] = gl.getUniformLocation(prog, n); });
+  const mkTex = (unit, filt) => { const t = gl.createTexture(); gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filt === 'mip' ? gl.LINEAR_MIPMAP_LINEAR : filt === 'near' ? gl.NEAREST : gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filt === 'near' ? gl.NEAREST : gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); return t; };
+  tex.pal = mkTex(0, 'lin'); tex.cov = mkTex(1, 'lin'); tex.code = mkTex(2, 'near'); tex.lights = mkTex(3, 'mip'); tex.shore = mkTex(4, 'near');
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex.pal);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, makePalette());
+  gl.uniform1i(U.uPal, 0); gl.uniform1i(U.uCov, 1); gl.uniform1i(U.uCode, 2); gl.uniform1i(U.uLights, 3); gl.uniform1i(U.uShore, 4);
+  canvas.addEventListener('webglcontextlost', ev => { ev.preventDefault(); gl = null; showFallback(); });
+  return true;
+}
+let lightsAllocated = false;
+function uploadStatic() {
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, tex.cov); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, covC);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, tex.code); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, codeC);
+  gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, tex.shore);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, shoreY.length / 4, 1, 0, gl.RGBA, gl.FLOAT, shoreY);
+  lightsAllocated = false;
+}
+function showFallback() {
+  canvas.hidden = true;
+  document.getElementById('fallback').hidden = false;
+  capBody.innerHTML = '<p>This browser couldn’t start WebGL 2, so the live view is replaced by a still. The times and the sun position are still calculated for Perth today.</p>';
+}
+
+/* ================= lights, every frame ================= */
+const HALO_COLS = [[0.52, 0.22, 0.95], [0.16, 0.42, 1.0], [1.0, 0.55, 0.14], [0.95, 0.95, 1.0]];
+function haloColor(t) {
+  if (reduce) return HALO_COLS[0];
+  const k = (t / 9) % HALO_COLS.length, i = Math.floor(k), f = smooth(0.75, 1, k - i);
+  const a = HALO_COLS[i], b = HALO_COLS[(i + 1) % HALO_COLS.length];
+  return [lerp(a[0], b[0], f), lerp(a[1], b[1], f), lerp(a[2], b[2], f)];
+}
+function hsl2rgb(h, s, l) { const k = n => (n + h / 30) % 12, a = s * Math.min(l, 1 - l); const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1))); return [f(0), f(8), f(4)]; }
+function drawLights(e, t) {
+  const c = lightsCtx, tm = reduce ? 0 : t;
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1; c.fillStyle = '#000'; c.fillRect(0, 0, lightsC.width, lightsC.height);
+  const on = smooth(-1.5, -6.5, e);
+  c.globalCompositeOperation = 'lighter';
+  const bins = list => list.forEach((b, i) => { const a = clamp((BIN_E[i] - e) / 1.3, 0, 1); if (a > 0.01) { c.globalAlpha = a; c.drawImage(b.c, 0, 0); } });
+  bins(sprawlBins);
+  c.setTransform(scale, 0, 0, scale, 0, 0);
+  const hc = haloColor(tm);
+  if (on > 0.01) {
+    // Optus Stadium: the halo along the roof edge and the lit arbour along its foot
+    const [xl, xr, yB] = halo.base;
+    halo.forEach(([x, y, u], i) => {
+      const chase = reduce ? 0.85 : 0.7 + 0.3 * Math.sin(u * 18 - tm * 2.2);
+      c.globalAlpha = on * chase; c.fillStyle = 'rgb(' + Math.round(hc[0] * 255) + ',' + Math.round(hc[1] * 255) + ',' + Math.round(hc[2] * 255) + ')';
+      c.fillRect(x - 0.7, y - 0.5, 1.4, 1.2);
+    });
+    c.fillStyle = 'rgb(255,232,200)';
+    for (let i = 0; i < 43; i++) { c.globalAlpha = on * 0.55; c.fillRect(lerp(xl + 2, xr - 2, i / 42) - 0.4, yB - 2.2, 0.8, 1.6); }
+    // Matagarup Bridge: colour runs along the arches
+    arches.forEach((a, k) => {
+      for (let i = 0; i <= 24; i++) {
+        const u = i / 24, x = lerp(a.x0, a.x1, u), y = (1 - u) * (1 - u) * a.yB + 2 * (1 - u) * u * (2 * a.yT - a.yB) + u * u * a.yB;
+        const rgb = hsl2rgb(((reduce ? 300 : 280 + 80 * Math.sin(tm * 0.4 + u * 3 + k)) + 360) % 360, 0.9, 0.62);
+        c.globalAlpha = on * 0.9; c.fillStyle = 'rgb(' + Math.round(rgb[0] * 255) + ',' + Math.round(rgb[1] * 255) + ',' + Math.round(rgb[2] * 255) + ')';
+        c.fillRect(x - 0.6, y - 0.6, 1.2, 1.2);
+      }
+    });
+    // traffic on the far bank
+    roads.filter(r => !r.near).forEach(r => drawCars(c, r, tm, on, 0.9));
+  }
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1; c.drawImage(blackC, 0, 0);
+  c.globalCompositeOperation = 'lighter';
+  bins(winBins);
+  c.setTransform(scale, 0, 0, scale, 0, 0);
+  beacons.forEach(b => {
+    const a = (0.35 + 0.65 * Math.pow(0.5 + 0.5 * Math.sin(tm * 2.1 + b.ph * 6.28), 3)) * (0.25 + 0.75 * on);
+    c.globalAlpha = clamp(a, 0, 1); c.fillStyle = 'rgb(255,52,40)'; c.beginPath(); c.arc(b.x, b.y, b.size * 0.75, 0, 6.2832); c.fill();
+  });
+  if (on > 0.01) {
+    // the Bell Tower's spire, lit from inside
+    if (spire) { c.save(); c.globalAlpha = on * 0.32; c.fillStyle = 'rgb(160,215,255)'; c.beginPath(); c.rect(spire.cx - spire.hb * 0.45, spire.yT, spire.hb * 0.9, spire.ySail - spire.yT); c.fill(); c.restore(); }
+    roads.filter(r => r.near).forEach(r => drawCars(c, r, tm, on, 1.6));
+    // the South Perth ferry crossing from Barrack Street Jetty
+    const s = ((tm * 0.006) + 0.15) % 1;
+    if (s < 0.55) {
+      const a = lerp(86.2, 128, s / 0.55), el = lerp(-2.52, -2.15, s / 0.55);
+      const fx = X(a), fy = Y(el);
+      c.globalAlpha = on * 0.95; c.fillStyle = 'rgb(255,226,180)';
+      for (let i = 0; i < 4; i++) c.fillRect(fx - 2.5 + i * 1.6, fy - 1, 1, 0.9);
+      c.fillStyle = 'rgb(235,245,255)'; c.fillRect(fx, fy - 3, 0.9, 0.9);
+    }
+  }
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1; c.drawImage(fgBlack, 0, 0);
+}
+function drawCars(c, r, tm, on, size) {
+  const n = r.pts.length - 1;
+  r.car.forEach(car => {
+    let s = (car.s + car.dir * tm * car.v) % 1; if (s < 0) s += 1;
+    const f = s * n, i = Math.floor(f), k = f - i, p = r.pts[i], q = r.pts[Math.min(n, i + 1)];
+    const x = lerp(p[0], q[0], k), y = lerp(p[1], q[1], k);
+    c.globalAlpha = on * 0.85;
+    c.fillStyle = car.dir > 0 ? 'rgb(255,70,52)' : 'rgb(255,244,226)';
+    c.fillRect(x - size * 0.5, y - size * 0.45, size, size * 0.9);
+  });
+}
+
+/* ================= title: silhouette by day, pink neon by night ================= */
+let lit = false, igniteAt = 0, lastTitle = '';
+const FLICKER = [[0, 0], [45, 1], [95, 0], [170, 0], [190, 0.85], [250, 0.1], [320, 1], [360, 0.4], [430, 1]];
+function flicker(dt) { let v = 0; for (const [tt, a] of FLICKER) if (dt >= tt) v = a; return v; }
+function styleTitle(e, now) {
+  const thin = smooth(0.2, -5.5, e);
+  const w = Math.round(lerp(820, 200, thin)), wd = Math.round(lerp(125, 108, thin));
+  if (e <= -6 && !lit) { lit = true; igniteAt = now; }
+  if (e > -5.6 && lit) lit = false;
+  const g = lit ? (reduce ? 1 : flicker(now - igniteAt)) : 0;
+  let color, shadow, stroke;
+  if (g > 0) {
+    color = 'rgba(255,234,244,' + (0.2 + 0.8 * g).toFixed(2) + ')';
+    shadow = '0 0 1px rgba(255,248,252,' + (0.9 * g).toFixed(2) + '),0 0 6px rgba(255,120,190,' + (0.95 * g).toFixed(2) + '),0 0 18px rgba(255,80,165,' + (0.8 * g).toFixed(2) + '),0 0 44px rgba(240,60,150,' + (0.55 * g).toFixed(2) + '),0 0 96px rgba(220,50,140,' + (0.3 * g).toFixed(2) + ')';
+    stroke = '0px transparent';
+  } else {
+    color = 'rgba(' + Math.round(lerp(18, 238, thin)) + ',' + Math.round(lerp(24, 226, thin)) + ',' + Math.round(lerp(42, 232, thin)) + ',' + lerp(0.92, 0.12, thin).toFixed(2) + ')';
+    shadow = 'none';
+    stroke = thin.toFixed(2) + 'px rgba(255,236,244,' + (0.4 * thin).toFixed(2) + ')';
+  }
+  const key = w + ' ' + wd + color + shadow + stroke;
+  if (key !== lastTitle) {
+    lastTitle = key;
+    titleEl.style.setProperty('--w', w); titleEl.style.setProperty('--wd', wd);
+    titleEl.style.color = color; titleEl.style.textShadow = shadow; titleEl.style.webkitTextStroke = stroke;
+  }
+}
+
+/* ================= captions & readouts ================= */
+let capIdx = -1, swapTimer = 0;
+function setCaption(i) {
+  if (i === capIdx) return;
+  capIdx = i;
+  const ch = chapters[i];
+  const render = () => {
+    if (ch.end) {
+      capBody.innerHTML = '<div class="done">Lights on.</div><p class="foot"></p><button class="btn" type="button" id="again">Watch it again</button>';
+      capBody.querySelector('.foot').textContent = 'The sun’s path, the twilight times, the climb of Kings Park’s shadow and the centre of the Earth’s shadow are calculated live for Perth today' + (tzOK ? '' : ' (using Western Australian time)') + '. Landmarks sit at their real bearings and distances from the State War Memorial; heights are slightly stretched, and the shoreline is drawn from the map by hand.';
+      document.getElementById('again').addEventListener('click', () => { scrollTo({ top: 0, behavior: 'auto' }); displayM = M0; startIntro(false); });
+      capEl.removeAttribute('aria-hidden');
+    } else {
+      capBody.innerHTML = ''; const p = document.createElement('p'); p.textContent = ch.text; capBody.appendChild(p);
+      capEl.setAttribute('aria-hidden', 'true');
+    }
+  };
+  clearTimeout(swapTimer);
+  if (reduce) { render(); return; }
+  capEl.classList.add('swap');
+  swapTimer = setTimeout(() => { render(); capEl.classList.remove('swap'); }, 240);
+}
+function chapterFor(m) { let k = 0; for (let i = 0; i < chapters.length; i++) if (m >= chapters[i].m) k = i; return k; }
+let lastClock = '', lastRel = '', lastAlt = '';
+function readouts(m, sun) {
+  const clk = fmtTime(mToMs(m)), mi = Math.round(m);
+  const rel = mi < 0 ? (-mi) + ' min before sunset' : mi === 0 ? 'Sunset' : mi + ' min after sunset';
+  const el = sun.app;
+  const alt = Math.abs(el) < 0.3 ? 'Sun touching the horizon' : 'Sun ' + Math.abs(el).toFixed(1) + '° ' + (el > 0 ? 'above' : 'below') + ' the horizon';
+  if (clk !== lastClock) { clockEl.textContent = clk; lastClock = clk; }
+  if (rel !== lastRel) { relEl.textContent = rel; lastRel = rel; }
+  if (alt !== lastAlt) { altEl.textContent = alt; lastAlt = alt; }
+  railDot.style.top = ((m - M0) / (M1 - M0) * 100).toFixed(3) + '%';
+}
+
+/* ================= intro: glare burns off, a timelapse, a rewind ================= */
+let intro = null, displayM = M0, hintShown = false;
+function startIntro(first) {
+  if (first) capIdx = 0;
+  if (reduce) { endIntro(); return; }
+  intro = { t0: performance.now() };
+  glareEl.hidden = false; glareEl.style.setProperty('--clear', '0%'); glareEl.style.opacity = '1';
+  skipEl.hidden = false; hintEl.classList.add('quiet');
+  if (!first) { capIdx = -1; setCaption(0); }
+}
+function endIntro() {
+  if (!intro && glareEl.hidden) return;
+  intro = null; glareEl.hidden = true; skipEl.hidden = true;
+  if (scrollY < 8 && !hintShown) { hintEl.classList.remove('quiet'); hintShown = true; }
+}
+function introM(ms) {
+  const easeIO = x => x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+  glareEl.style.setProperty('--clear', (smooth(700, 2500, ms) * 150).toFixed(1) + '%');
+  glareEl.style.opacity = (1 - smooth(2200, 2700, ms)).toFixed(3);
+  if (ms < 2300) return M0;
+  if (ms < 7600) return lerp(M0, M1 - 4, easeIO((ms - 2300) / 5300));
+  if (ms < 8400) return M1 - 4;
+  if (ms < 10000) return lerp(M1 - 4, M0, easeIO((ms - 8400) / 1600));
+  endIntro(); return M0;
+}
+skipEl.addEventListener('click', () => { endIntro(); displayM = scrollToM(); });
+['wheel', 'touchmove', 'keydown'].forEach(evt => addEventListener(evt, ev => {
+  if (!intro) return;
+  if (evt === 'keydown' && !['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', ' ', 'End', 'Home'].includes(ev.key)) return;
+  endIntro();
+}, { passive: true }));
+addEventListener('scroll', () => { if (scrollY > 8) { hintEl.classList.add('quiet'); if (intro) endIntro(); } }, { passive: true });
+addEventListener('pointermove', ev => {
+  document.querySelectorAll('.glass').forEach(g => { const r = g.getBoundingClientRect(); g.style.setProperty('--mx', (ev.clientX - r.left) + 'px'); g.style.setProperty('--my', (ev.clientY - r.top) + 'px'); });
+}, { passive: true });
+
+/* ================= frame loop ================= */
+let last = performance.now(), frames = 0, slow = 0, tStart = performance.now(), lastRim = '';
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  const tsec = (now - tStart) / 1000;
+  let m;
+  if (intro) { m = introM(now - intro.t0); displayM = m; }
+  if (!intro) { const target = scrollToM(); displayM += (target - displayM) * (reduce ? 1 : 1 - Math.exp(-dt * 4.5)); m = displayM; }
+  const sun = solar(mToMs(m));
+  const e = sun.app;
+  if (gl) {
+    drawLights(e, tsec);
+    gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, tex.lights);
+    if (!lightsAllocated) { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, lightsC); lightsAllocated = true; }
+    else gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, lightsC);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.uniform2f(U.uRes, canvas.width, canvas.height);
+    gl.uniform1f(U.uScale, scale);
+    gl.uniform1f(U.uTime, tsec);
+    gl.uniform1f(U.uMotion, reduce ? 0 : 1);
+    gl.uniform1f(U.uE, e);
+    gl.uniform1f(U.uEye, eyeY);
+    gl.uniform1f(U.uPxV, pxV); gl.uniform1f(U.uPxH, pxH);
+    gl.uniform1f(U.uCenterAz, center);
+    gl.uniform1f(U.uAntiAz, (sun.az + 180) % 360);
+    gl.uniform1f(U.uRipple, lerp(1.45, 0.6, smooth(-35, 25, m)));
+    const hc = haloColor(reduce ? 0 : tsec); gl.uniform3f(U.uHalo, hc[0], hc[1], hc[2]);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+  styleTitle(e, now);
+  readouts(m, sun);
+  if (!intro) setCaption(chapterFor(m));
+  const g = palAt(4, e), rim = 'rgba(' + Math.round(g[0]) + ',' + Math.round(g[1]) + ',' + Math.round(g[2]) + ',' + (0.22 + 0.25 * smooth(-12, 2, e)).toFixed(2) + ')';
+  if (rim !== lastRim) { document.documentElement.style.setProperty('--rim', rim); lastRim = rim; }
+  frames++;
+  if (frames > 30 && dt > 0.028) slow++;
+  if (slow > 45 && perfCap > 1) { perfCap = perfCap > 1.2 ? 1 : 0.75; slow = 0; frames = 0; layout(); }
+  requestAnimationFrame(frame);
+}
+
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+const ok = initGL();
+if (!ok) showFallback();
+layout();
+let rz = 0;
+addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(layout, 150); });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { lastTitle = ''; });
+startIntro(true);
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
